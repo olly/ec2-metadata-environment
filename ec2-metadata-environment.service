@@ -1,0 +1,10 @@
+[Unit]
+Description="fetches EC2 metadata, and stores it as an EnvironmentFile"
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart="/usr/local/bin/update-ec2-metadata-environment"
+
