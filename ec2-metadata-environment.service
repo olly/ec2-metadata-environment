@@ -6,5 +6,5 @@ After=network-online.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart="/usr/local/bin/update-ec2-metadata-environment"
+ExecStart="/usr/bin/update-ec2-metadata-environment"
 
