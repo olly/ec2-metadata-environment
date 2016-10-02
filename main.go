@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
 	"path"
 	"time"
@@ -15,6 +16,15 @@ import (
 const (
 	environmentFilePath = "/etc/ec2/environment"
 )
+
+func incrementIPAddress(ip net.IP) {
+	for j := len(ip) - 1; j >= 0; j-- {
+		ip[j]++
+		if ip[j] > 0 {
+			break
+		}
+	}
+}
 
 func main() {
 	logger := log.New(os.Stderr, "", 0)
@@ -46,6 +56,29 @@ func main() {
 		logger.Fatal(err)
 	}
 
+	macAddress, err := client.GetMetadata("mac")
+	if err != nil {
+		logger.Fatal(err)
+	}
+
+	vpcID, err := client.GetMetadata(fmt.Sprintf("network/interfaces/macs/%s/vpc-id", macAddress))
+	if err != nil {
+		logger.Fatal(err)
+	}
+
+	vpcIPV4CIDRBlock, err := client.GetMetadata(fmt.Sprintf("network/interfaces/macs/%s/vpc-ipv4-cidr-block", macAddress))
+	if err != nil {
+		logger.Fatal(err)
+	}
+
+	vpcCIDRBlock, _, err := net.ParseCIDR(vpcIPV4CIDRBlock)
+	if err != nil {
+		logger.Fatal(err)
+	}
+	vpcDNSServerAddress := vpcCIDRBlock
+	incrementIPAddress(vpcDNSServerAddress)
+	incrementIPAddress(vpcDNSServerAddress)
+
 	output := io.MultiWriter(environmentFile, os.Stderr)
 	writeEnvironmentVariable := func(name, value string) {
 		fmt.Fprintf(output, "%s=%s\n", name, value)
@@ -58,8 +91,12 @@ func main() {
 	writeEnvironmentVariable("EC2_INSTANCE_ID", metadata.InstanceID)
 	writeEnvironmentVariable("EC2_INSTANCE_TYPE", metadata.InstanceType)
 	writeEnvironmentVariable("EC2_KERNEL_ID", metadata.KernelID)
+	writeEnvironmentVariable("EC2_MAC_ADDRESS", macAddress)
 	writeEnvironmentVariable("EC2_PENDING_TIME", metadata.PendingTime.Format(time.RFC3339))
 	writeEnvironmentVariable("EC2_PRIVATE_IP", metadata.PrivateIP)
 	writeEnvironmentVariable("EC2_RAMDISK_ID", metadata.RamdiskID)
 	writeEnvironmentVariable("EC2_REGION", metadata.Region)
+	writeEnvironmentVariable("EC2_VPC_ID", vpcID)
+	writeEnvironmentVariable("EC2_VPC_IPV4_CIDR_BLOCK", vpcIPV4CIDRBlock)
+	writeEnvironmentVariable("EC2_VPC_DNS_SERVER_ADDRESS", vpcDNSServerAddress.String())
 }
