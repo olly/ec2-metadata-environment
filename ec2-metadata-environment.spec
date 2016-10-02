@@ -1,5 +1,5 @@
 Name:           ec2-metadata-environment
-Version:        1.0.0
+Version:        1.1.0
 Release:        1%{?dist}
 Summary:        ec2-metadata-environment is a utility for accessing EC2 metadata as environment variables
 
