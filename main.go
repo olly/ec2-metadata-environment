@@ -101,6 +101,28 @@ func main() {
 		return strings.Join(securityGroups, ","), nil
 	}
 
+	fetchSSHPublicKeys := func() (string, error) {
+		value, err := fetchMetadata("public-keys")()
+		if err != nil {
+			return "", err
+		}
+
+		keyNames := strings.Split(value, "\n")
+		keys := make([]string, 0, len(keyNames))
+		for _, keyName := range keyNames {
+			i := strings.Split(keyName, "=")[0]
+			key, err := fetchMetadata("public-keys/%s/openssh-key", i)()
+			if err != nil {
+				return "", err
+			}
+			key = strings.TrimSpace(key)
+			keys = append(keys, key)
+		}
+
+		keysOutput := fmt.Sprintf("\"%s\"", strings.Join(keys, "\\n"))
+		return keysOutput, nil
+	}
+
 	variables := make(map[string]func() (string, error))
 	variables["EC2_ACCOUNT_ID"] = use(metadata.AccountID)
 	variables["EC2_ARCHITECTURE"] = use(metadata.Architecture)
@@ -121,6 +143,7 @@ func main() {
 	variables["EC2_REGION"] = use(metadata.Region)
 	variables["EC2_RESERVATION_ID"] = fetchMetadata("reservation-id")
 	variables["EC2_SECURITY_GROUPS"] = fetchSecurityGroups
+	variables["EC2_SSH_PUBLIC_KEYS"] = fetchSSHPublicKeys
 	variables["EC2_VPC_DNS_SERVER_ADDRESS"] = calculateDNSServerAddress
 	variables["EC2_VPC_ID"] = fetchMetadata("network/interfaces/macs/%s/vpc-id", macAddress)
 	variables["EC2_VPC_IPV4_CIDR_BLOCK"] = use(vpcIPV4CIDRBlock)
