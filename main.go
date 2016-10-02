@@ -19,15 +19,6 @@ const (
 	environmentFilePath = "/etc/ec2/environment"
 )
 
-func incrementIPAddress(ip net.IP) {
-	for j := len(ip) - 1; j >= 0; j-- {
-		ip[j]++
-		if ip[j] > 0 {
-			break
-		}
-	}
-}
-
 func main() {
 	logger := log.New(os.Stderr, "", 0)
 
@@ -85,6 +76,16 @@ func main() {
 		if err != nil {
 			return "", err
 		}
+
+		incrementIPAddress := func(ip net.IP) {
+			for j := len(ip) - 1; j >= 0; j-- {
+				ip[j]++
+				if ip[j] > 0 {
+					break
+				}
+			}
+		}
+
 		vpcDNSServerAddress := vpcCIDRBlock
 		incrementIPAddress(vpcDNSServerAddress)
 		incrementIPAddress(vpcDNSServerAddress)
