@@ -136,7 +136,6 @@ func main() {
 	variables["EC2_MAC_ADDRESS"] = use(macAddress)
 	variables["EC2_MAC_ADDRESS"] = use(macAddress)
 	variables["EC2_PENDING_TIME"] = use(metadata.PendingTime.Format(time.RFC3339))
-	variables["EC2_PRIVATE_IP"] = use(metadata.PrivateIP)
 	variables["EC2_PUBLIC_HOSTNAME"] = fetchMetadata("public-hostname")
 	variables["EC2_PUBLIC_IPV4"] = fetchMetadata("public-ipv4")
 	variables["EC2_RAMDISK_ID"] = use(metadata.RamdiskID)
