@@ -7,6 +7,8 @@ import (
 	"net"
 	"os"
 	"path"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws/ec2metadata"
@@ -56,47 +58,92 @@ func main() {
 		logger.Fatal(err)
 	}
 
-	macAddress, err := client.GetMetadata("mac")
+	fetchMetadata := func(path string, vars ...interface{}) func() (string, error) {
+		return func() (string, error) {
+			return client.GetMetadata(fmt.Sprintf(path, vars...))
+		}
+	}
+
+	use := func(value string) func() (string, error) {
+		return func() (string, error) {
+			return value, nil
+		}
+	}
+
+	macAddress, err := fetchMetadata("mac")()
 	if err != nil {
 		logger.Fatal(err)
 	}
 
-	vpcID, err := client.GetMetadata(fmt.Sprintf("network/interfaces/macs/%s/vpc-id", macAddress))
+	vpcIPV4CIDRBlock, err := fetchMetadata("network/interfaces/macs/%s/vpc-ipv4-cidr-block", macAddress)()
 	if err != nil {
 		logger.Fatal(err)
 	}
 
-	vpcIPV4CIDRBlock, err := client.GetMetadata(fmt.Sprintf("network/interfaces/macs/%s/vpc-ipv4-cidr-block", macAddress))
-	if err != nil {
-		logger.Fatal(err)
+	calculateDNSServerAddress := func() (string, error) {
+		vpcCIDRBlock, _, err := net.ParseCIDR(vpcIPV4CIDRBlock)
+		if err != nil {
+			return "", err
+		}
+		vpcDNSServerAddress := vpcCIDRBlock
+		incrementIPAddress(vpcDNSServerAddress)
+		incrementIPAddress(vpcDNSServerAddress)
+		return vpcDNSServerAddress.String(), nil
 	}
 
-	vpcCIDRBlock, _, err := net.ParseCIDR(vpcIPV4CIDRBlock)
-	if err != nil {
-		logger.Fatal(err)
+	fetchSecurityGroups := func() (string, error) {
+		value, err := fetchMetadata("security-groups")()
+		if err != nil {
+			return "", err
+		}
+		securityGroups := strings.Split(value, "\n")
+		sort.Strings(securityGroups)
+		return strings.Join(securityGroups, ","), nil
 	}
-	vpcDNSServerAddress := vpcCIDRBlock
-	incrementIPAddress(vpcDNSServerAddress)
-	incrementIPAddress(vpcDNSServerAddress)
+
+	variables := make(map[string]func() (string, error))
+	variables["EC2_ACCOUNT_ID"] = use(metadata.AccountID)
+	variables["EC2_ARCHITECTURE"] = use(metadata.Architecture)
+	variables["EC2_AVAILABILITY_ZONE"] = use(metadata.AvailabilityZone)
+	variables["EC2_IMAGE_ID"] = use(metadata.ImageID)
+	variables["EC2_INSTANCE_ID"] = use(metadata.InstanceID)
+	variables["EC2_INSTANCE_TYPE"] = use(metadata.InstanceType)
+	variables["EC2_KERNEL_ID"] = use(metadata.KernelID)
+	variables["EC2_LOCAL_HOSTNAME"] = fetchMetadata("local-hostname")
+	variables["EC2_LOCAL_IPV4"] = fetchMetadata("local-ipv4")
+	variables["EC2_MAC_ADDRESS"] = use(macAddress)
+	variables["EC2_MAC_ADDRESS"] = use(macAddress)
+	variables["EC2_PENDING_TIME"] = use(metadata.PendingTime.Format(time.RFC3339))
+	variables["EC2_PRIVATE_IP"] = use(metadata.PrivateIP)
+	variables["EC2_PUBLIC_HOSTNAME"] = fetchMetadata("public-hostname")
+	variables["EC2_PUBLIC_IPV4"] = fetchMetadata("public-ipv4")
+	variables["EC2_RAMDISK_ID"] = use(metadata.RamdiskID)
+	variables["EC2_REGION"] = use(metadata.Region)
+	variables["EC2_RESERVATION_ID"] = fetchMetadata("reservation-id")
+	variables["EC2_SECURITY_GROUPS"] = fetchSecurityGroups
+	variables["EC2_VPC_DNS_SERVER_ADDRESS"] = calculateDNSServerAddress
+	variables["EC2_VPC_ID"] = fetchMetadata("network/interfaces/macs/%s/vpc-id", macAddress)
+	variables["EC2_VPC_IPV4_CIDR_BLOCK"] = use(vpcIPV4CIDRBlock)
+
+	stringVariables := make(map[string]string, len(variables))
+	for key, value := range variables {
+		v, err := value()
+		if err != nil {
+			logger.Fatal(err)
+		}
+		stringVariables[key] = v
+	}
+
+	keys := make([]string, 0, len(stringVariables))
+	for key := range stringVariables {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
 
 	output := io.MultiWriter(environmentFile, os.Stderr)
-	writeEnvironmentVariable := func(name, value string) {
-		fmt.Fprintf(output, "%s=%s\n", name, value)
+	for _, key := range keys {
+		value := stringVariables[key]
+		fmt.Fprintf(output, "%s=%s\n", key, value)
 	}
 
-	writeEnvironmentVariable("EC2_ACCOUNT_ID", metadata.AccountID)
-	writeEnvironmentVariable("EC2_ARCHITECTURE", metadata.Architecture)
-	writeEnvironmentVariable("EC2_AVAILABILITY_ZONE", metadata.AvailabilityZone)
-	writeEnvironmentVariable("EC2_IMAGE_ID", metadata.ImageID)
-	writeEnvironmentVariable("EC2_INSTANCE_ID", metadata.InstanceID)
-	writeEnvironmentVariable("EC2_INSTANCE_TYPE", metadata.InstanceType)
-	writeEnvironmentVariable("EC2_KERNEL_ID", metadata.KernelID)
-	writeEnvironmentVariable("EC2_MAC_ADDRESS", macAddress)
-	writeEnvironmentVariable("EC2_PENDING_TIME", metadata.PendingTime.Format(time.RFC3339))
-	writeEnvironmentVariable("EC2_PRIVATE_IP", metadata.PrivateIP)
-	writeEnvironmentVariable("EC2_RAMDISK_ID", metadata.RamdiskID)
-	writeEnvironmentVariable("EC2_REGION", metadata.Region)
-	writeEnvironmentVariable("EC2_VPC_ID", vpcID)
-	writeEnvironmentVariable("EC2_VPC_IPV4_CIDR_BLOCK", vpcIPV4CIDRBlock)
-	writeEnvironmentVariable("EC2_VPC_DNS_SERVER_ADDRESS", vpcDNSServerAddress.String())
 }
